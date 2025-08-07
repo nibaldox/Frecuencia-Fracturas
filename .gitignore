@@ -1,0 +1,33 @@
+# Archivos, directorios y patrones que no se deben subir al repositorio
+# =========================================
+# Carpeta de entornos virtuales
+.env/
+.venv/
+venv/
+
+# Compilados de Python
+__pycache__/
+*.py[cod]
+*.so
+
+# Archivos de configuración locales
+*.env
+*.local
+
+# Salida de Streamlit
+.streamlit/
+
+# Archivos temporales del sistema operativo
+.DS_Store
+Thumbs.db
+
+# Logs y datos generados
+*.log
+data/
+
+# Archivos de pruebas automatizadas
+coverage.xml
+htmlcov/
+
+# Jupyter Notebooks checkpoints
+.ipynb_checkpoints/
