@@ -65,11 +65,43 @@ def detect_cracks(
 
     for i in range(1, num_labels):  # saltar fondo (0)
         area = stats[i, cv2.CC_STAT_AREA]
-        if area >= min_length_px:
-            crack_mask[labels == i] = True
-            # Centroid from stats
-            cx = int(stats[i, cv2.CC_STAT_LEFT] + stats[i, cv2.CC_STAT_WIDTH] / 2)
-            cy = int(stats[i, cv2.CC_STAT_TOP] + stats[i, cv2.CC_STAT_HEIGHT] / 2)
-            crack_info.append({"id": i, "area": int(area), "centroid": (cx, cy)})
+        if area < min_length_px:
+            continue
+        component_mask = labels == i
+        crack_mask[component_mask] = True
+        # Centroid from stats
+        cx = int(stats[i, cv2.CC_STAT_LEFT] + stats[i, cv2.CC_STAT_WIDTH] / 2)
+        cy = int(stats[i, cv2.CC_STAT_TOP] + stats[i, cv2.CC_STAT_HEIGHT] / 2)
+        # Longitud aproximada (conteo de pixeles del esqueleto en el componente)
+        length_px = int(np.count_nonzero(component_mask))
+        # Orientación y longitud principal vía PCA (sobre coordenadas del componente)
+        coords = np.column_stack(np.where(component_mask))  # (row, col)
+        orientation_deg = None
+        length_major_px = None
+        if coords.shape[0] >= 2:
+            # Centrar
+            coords_centered = coords - coords.mean(axis=0, keepdims=True)
+            # Covarianza
+            cov = np.cov(coords_centered, rowvar=False)
+            eigvals, eigvecs = np.linalg.eigh(cov)
+            order = np.argsort(eigvals)[::-1]
+            eigvals = eigvals[order]
+            eigvecs = eigvecs[:, order]
+            # Vector principal (columna 0)
+            v = eigvecs[:, 0]
+            # eigenvalue -> var; longitud ~ 2*sqrt(var*(n-1))
+            if eigvals[0] > 0:
+                length_major_px = float(2 * np.sqrt(eigvals[0] * (coords.shape[0] - 1)))
+            # v corresponde a (row, col). Convertir a ángulo respecto eje X positivo.
+            dy, dx = v  # row=y, col=x
+            orientation_deg = float(np.degrees(np.arctan2(dy, dx)))
+        crack_info.append({
+            "id": i,
+            "area": int(area),
+            "centroid": (cx, cy),
+            "length_px": length_px,
+            "length_major_px": length_major_px if length_major_px is not None else length_px,
+            "orientation_deg": orientation_deg,
+        })
 
     return skeleton, crack_mask, crack_info

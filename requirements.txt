@@ -5,3 +5,5 @@ numpy
 pandas
 streamlit-cropper
 matplotlib
+streamlit-drawable-canvas
+streamlit-image-coordinates

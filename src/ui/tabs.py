@@ -7,10 +7,10 @@ from typing import Optional
 
 from src import crack_detection, image_io, metrics, fragmentation
 from src.ui.components import (
-    mostrar_deteccion_grietas, 
-    selector_grietas_excluir, 
-    input_escala, 
-    input_rmr
+    mostrar_deteccion_grietas,
+    selector_grietas_excluir,
+    input_escala,
+    input_rmr,
 )
 
 
@@ -43,6 +43,53 @@ def tab_fracturas(image: np.ndarray, min_crack_length_px: int) -> dict:
     # Métricas geotécnicas
     st.header("3️⃣ Métricas geotécnicas")
     scale_val = input_escala()
+
+    # Mostrar tabla detallada de grietas con longitud y orientación
+    if crack_info:
+        with st.expander("Detalles de grietas detectadas"):
+            import pandas as pd
+            # Filtro longitud mínima en metros (derivado) opcional
+            min_len_m = st.number_input(
+                "Longitud mínima (m) para incluir en tabla (0 = sin filtro)",
+                min_value=0.0,
+                value=0.0,
+                step=0.05,
+                key="min_len_filter_m",
+            )
+            rows = []
+            for c in crack_info:
+                if c["id"] in excluded_ids:
+                    continue
+                length_m = c.get("length_px", 0) / scale_val if scale_val > 0 else None
+                if min_len_m > 0 and (length_m is None or length_m < min_len_m):
+                    continue
+                rows.append(
+                    {
+                        "ID": c["id"],
+                        "Longitud_px": c.get("length_px"),
+                        "Longitud_m": round(length_m, 4) if length_m is not None else None,
+                        "Longitud_eje_mayor_px": round(c.get("length_major_px", 0), 1),
+                        "Longitud_eje_mayor_m": round(c.get("length_major_px", 0) / scale_val, 4)
+                        if scale_val > 0
+                        else None,
+                        "Orientacion_deg": None if c.get("orientation_deg") is None else round(c.get("orientation_deg"), 1),
+                        "Area_px": c.get("area"),
+                    }
+                )
+            if rows:
+                df_cracks = pd.DataFrame(rows)
+                st.dataframe(df_cracks, use_container_width=True, hide_index=True)
+                # Estadísticas rápidas de longitud
+                lengths_m = [r["Longitud_m"] for r in rows if r["Longitud_m"] is not None]
+                if lengths_m:
+                    st.markdown("**Estadísticas de longitudes (m):**")
+                    col_a, col_b, col_c, col_d = st.columns(4)
+                    col_a.metric("Promedio", f"{np.mean(lengths_m):.4f}")
+                    col_b.metric("Mediana", f"{np.median(lengths_m):.4f}")
+                    col_c.metric("Máx", f"{np.max(lengths_m):.4f}")
+                    col_d.metric("Cuenta", len(lengths_m))
+            else:
+                st.info("No hay grietas que cumplan el filtro actual.")
     
     # Calcular métricas básicas
     valid_count = len(crack_info) - len(excluded_ids)
