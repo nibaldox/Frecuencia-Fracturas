@@ -4,6 +4,7 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 from typing import Optional
+import hashlib
 
 from src import crack_detection, image_io, metrics, fragmentation
 from src.ui.components import (
@@ -11,6 +12,7 @@ from src.ui.components import (
     selector_grietas_excluir,
     input_escala,
     input_rmr,
+    configuracion_display,
 )
 
 
@@ -30,6 +32,9 @@ def tab_fracturas(image: np.ndarray, min_crack_length_px: int) -> dict:
         image, min_length_px=min_crack_length_px
     )
 
+    # Configuración de display (altura máx / modo compacto)
+    max_h, compact = configuracion_display()
+
     # Crear overlay y anotaciones
     base_overlay = image_io.overlay_mask(image, crack_mask, color=(255, 0, 0))
     excluded_ids = selector_grietas_excluir(crack_info)
@@ -38,11 +43,47 @@ def tab_fracturas(image: np.ndarray, min_crack_length_px: int) -> dict:
     )
     
     # Mostrar resultados de detección
-    mostrar_deteccion_grietas(edges, annotated)
+    # Llamada robusta (si el servidor mantiene versión previa sin parámetros nuevos)
+    try:
+        mostrar_deteccion_grietas(edges, annotated, max_height=max_h, compact=compact)
+    except TypeError:
+        # Fallback a versión anterior (sin redimensionamiento configurable)
+        mostrar_deteccion_grietas(edges, annotated)
 
     # Métricas geotécnicas
     st.header("3️⃣ Métricas geotécnicas")
-    scale_val = input_escala()
+    # Hash de la imagen (ROI) para validar reutilización de escala calibrada
+    image_hash = hashlib.sha256(image.tobytes()).hexdigest()[:8]
+
+    global_scale = st.session_state.get("global_scale_px_m")
+    global_hash = st.session_state.get("global_scale_img_hash")
+    force_manual = st.session_state.get("force_manual_scale", False)
+
+    scale_val: float
+    if global_scale and global_hash == image_hash and not force_manual:
+        col_g1, col_g2 = st.columns([4,1])
+        with col_g1:
+            st.info(f"Usando escala calibrada global: {global_scale:.1f} px/m (img {image_hash})")
+        with col_g2:
+            if st.button("Editar manual", key="btn_manual_scale"):
+                st.session_state["force_manual_scale"] = True
+                st.experimental_rerun()
+        scale_val = float(global_scale)
+    else:
+        if global_scale and global_hash != image_hash:
+            st.warning("La escala calibrada pertenece a otra imagen; introduce una nueva escala manual o recalibra en Fragmentación.")
+        scale_val = input_escala()
+        col_m1, col_m2 = st.columns([3,2])
+        with col_m1:
+            if st.button("Volver a escala calibrada" , disabled=not (global_scale and global_hash==image_hash), key="btn_back_global"):
+                st.session_state["force_manual_scale"] = False
+                st.experimental_rerun()
+        with col_m2:
+            if st.button("Limpiar escala global", key="btn_clear_global"):
+                for k in ("global_scale_px_m","global_scale_img_hash"):
+                    st.session_state.pop(k, None)
+                st.session_state["force_manual_scale"] = True
+                st.experimental_rerun()
 
     # Mostrar tabla detallada de grietas con longitud y orientación
     if crack_info:
@@ -142,6 +183,14 @@ def tab_fragmentacion(image: np.ndarray) -> None:
     if scale_frag is None:
         st.warning("⚠️ Por favor, calibra la escala antes de continuar con el análisis.")
         return
+    else:
+        # Guardar escala global reutilizable con hash
+        image_hash = hashlib.sha256(image.tobytes()).hexdigest()[:8]
+        st.session_state["global_scale_px_m"] = float(scale_frag)
+        st.session_state["global_scale_img_hash"] = image_hash
+        # Si se estaba forzando modo manual, lo liberamos para permitir reutilización
+        if st.session_state.get("force_manual_scale"):
+            st.session_state["force_manual_scale"] = False
     
     # Separador visual
     st.divider()
