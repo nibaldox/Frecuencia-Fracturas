@@ -9,6 +9,7 @@ Se utiliza Pillow para abrir imágenes y OpenCV/Numpy para la manipulación.
 from __future__ import annotations
 
 import io
+from pathlib import Path
 from typing import Tuple
 
 import cv2
